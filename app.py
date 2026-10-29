@@ -3,6 +3,7 @@ import streamlit as st
 import base64
 from openai import OpenAI
 
+
 # Function to encode the image to base64
 def encode_image(image_file):
     return base64.b64encode(image_file.getvalue()).decode("utf-8")
@@ -206,13 +207,14 @@ st.markdown(
 # ============================================================
 
 ke = st.text_input('🔑 Ingresa tu Clave', type="password")
-os.environ['OPENAI_API_KEY'] = ke
 
-# Retrieve the OpenAI API Key
-api_key = os.environ['OPENAI_API_KEY']
+api_key = ke.strip()
 
-# Initialize the OpenAI client with the API key
-client = OpenAI(api_key=api_key)
+if api_key:
+    os.environ['OPENAI_API_KEY'] = api_key
+    client = OpenAI(api_key=api_key)
+else:
+    client = None
 
 # ============================================================
 # CARGAR IMAGEN
@@ -224,7 +226,6 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file:
-    # Display the uploaded image
     with st.expander("🖼️ Tu fotografía", expanded=True):
         st.image(uploaded_file, caption=uploaded_file.name, use_container_width=True)
 
@@ -234,10 +235,11 @@ if uploaded_file:
 
 show_details = st.toggle("🔍 Pregunta algo específico sobre la imagen", value=False)
 
+additional_details = ""
+
 if show_details:
     additional_details = st.text_area(
-        "Adiciona contexto de la imagen aquí:",
-        disabled=not show_details
+        "Adiciona contexto de la imagen aquí:"
     )
 
 # ============================================================
@@ -250,63 +252,57 @@ analyze_button = st.button("📸 Revelar imagen", type="secondary")
 # ANÁLISIS
 # ============================================================
 
-# Check if an image has been uploaded, if the API key is available, and if the button has been pressed
-if uploaded_file is not None and api_key and analyze_button:
+if analyze_button:
 
-    with st.spinner("🔴 Revelando en el cuarto oscuro..."):
-        # Encode the image
-        base64_image = encode_image(uploaded_file)
-
-        prompt_text = ("Describe what you see in the image in spanish")
-
-        if show_details and additional_details:
-            prompt_text += (
-                f"\n\nAdditional Context Provided by the User:\n{additional_details}"
-            )
-
-        # Create the payload for the completion request
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt_text},
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{base64_image}"
-                        }
-                    },
-                ],
-            }
-        ]
-
-        # Make the request to the OpenAI API
-        try:
-            st.markdown("### 🖨️ Resultado del revelado")
-
-            with st.container(border=True):
-                # Stream the response
-                full_response = ""
-                message_placeholder = st.empty()
-                for completion in client.chat.completions.create(
-                    model="gpt-4o", messages=messages,
-                    max_tokens=1200, stream=True
-                ):
-                    # Check if there is content to display
-                    if completion.choices[0].delta.content is not None:
-                        full_response += completion.choices[0].delta.content
-                        message_placeholder.markdown(full_response + "▌")
-                # Final update to placeholder after the stream ends
-                message_placeholder.markdown(full_response)
-
-        except Exception as e:
-            st.error(f"❌ Ocurrió un error: {e}")
-else:
-    # Warnings for user action required
-    if not uploaded_file and analyze_button:
-        st.warning("📂 Por favor sube una imagen.")
     if not api_key:
         st.warning("🔑 Por favor ingresa tu API key.")
+
+    elif uploaded_file is None:
+        st.warning("📂 Por favor sube una imagen.")
+
+    else:
+        with st.spinner("🔴 Revelando en el cuarto oscuro..."):
+            base64_image = encode_image(uploaded_file)
+
+            prompt_text = "Describe what you see in the image in spanish"
+
+            if show_details and additional_details:
+                prompt_text += (
+                    f"\n\nAdditional Context Provided by the User:\n{additional_details}"
+                )
+
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt_text},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{base64_image}"
+                            }
+                        },
+                    ],
+                }
+            ]
+
+            try:
+                st.markdown("### 🖨️ Resultado del revelado")
+
+                with st.container(border=True):
+                    full_response = ""
+                    message_placeholder = st.empty()
+                    for completion in client.chat.completions.create(
+                        model="gpt-4o", messages=messages,
+                        max_tokens=1200, stream=True
+                    ):
+                        if completion.choices and completion.choices[0].delta.content is not None:
+                            full_response += completion.choices[0].delta.content
+                            message_placeholder.markdown(full_response + "▌")
+                    message_placeholder.markdown(full_response)
+
+            except Exception as e:
+                st.error(f"❌ Ocurrió un error: {e}")
 
 # ============================================================
 # PIE DE PÁGINA
